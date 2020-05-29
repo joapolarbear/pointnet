@@ -24,7 +24,7 @@ try:
     import numba
     from algebra_numba import norm, dot, equal, compute_radius, cos_angle
 except:
-    from algebra import norm, dot, equal, compute_radius, cos_angle
+    from utils.algebra import norm, dot, equal, compute_radius, cos_angle
 
 # FIXME: can't handle duplicate points in input
 
