@@ -6,3 +6,6 @@ utils/__pycache__/
 *.pyc
 *.png
 *.jpg
+build/
+dist/
+*.egg-info/
