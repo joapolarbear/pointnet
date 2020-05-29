@@ -15,16 +15,21 @@
 
 # Copyright 2015 Ravi Peters
 
+import os, sys
 import math
 import numpy as np
 from pykdtree.kdtree import KDTree
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(BASE_DIR)
+sys.path.append(os.path.join(BASE_DIR, 'models'))
+sys.path.append(os.path.join(BASE_DIR, 'utils'))
 # with numba we get significant speedups
 try: 
     import numba
     from algebra_numba import norm, dot, equal, compute_radius, cos_angle
 except:
-    from utils.algebra import norm, dot, equal, compute_radius, cos_angle
+    from algebra import norm, dot, equal, compute_radius, cos_angle
 
 # FIXME: can't handle duplicate points in input
 
