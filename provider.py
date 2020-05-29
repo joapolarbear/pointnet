@@ -137,10 +137,14 @@ def PCA_normal(input_array):
 
     return datadict
 
-def get_MAT(input_array):
-    datadict = PCA_normal(input_array)
-    # compute interior and exterior MAT
-    ma = MASB(datadict, 10)
-    ma.compute_balls()
-    return datadict["ma_coords_in"]
+def get_MAT(batch_data):
+    mat_data = np.zeros(batch_data.shape, dtype=np.float32)
+    for k in range(batch_data.shape[0]):
+        datadict = PCA_normal(batch_data[k, ...])
+        # compute interior and exterior MAT
+        ma = MASB(datadict, 10)
+        ma.compute_balls()
+        mat_data[k, ...] = datadict["ma_coords_in"]
+    return mat_data
+
 

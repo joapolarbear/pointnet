@@ -20,7 +20,7 @@ parser.add_argument('--gpu', type=int, default=0, help='GPU to use [default: GPU
 parser.add_argument('--model', default='pointnet_cls', help='Model name: pointnet_cls or pointnet_cls_basic [default: pointnet_cls]')
 parser.add_argument('--log_dir', default='log', help='Log dir [default: log]')
 parser.add_argument('--num_point', type=int, default=1024, help='Point Number [256/512/1024/2048] [default: 1024]')
-parser.add_argument('--max_epoch', type=int, default=250, help='Epoch to run [default: 250]')
+parser.add_argument('--max_epoch', type=int, default=100, help='Epoch to run [default: 100]')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size during training [default: 32]')
 parser.add_argument('--learning_rate', type=float, default=0.001, help='Initial learning rate [default: 0.001]')
 parser.add_argument('--momentum', type=float, default=0.9, help='Initial learning rate [default: 0.9]')
@@ -95,7 +95,7 @@ def get_bn_decay(batch):
     bn_decay = tf.minimum(BN_DECAY_CLIP, 1 - bn_momentum)
     return bn_decay
 
-def train():
+def train(train_config):
     with tf.Graph().as_default():
         with tf.device('/gpu:'+str(GPU_INDEX)):
             pointclouds_pl, labels_pl = MODEL.placeholder_inputs(BATCH_SIZE, NUM_POINT)
@@ -163,7 +163,7 @@ def train():
             log_string('**** EPOCH %03d ****' % (epoch))
             sys.stdout.flush()
              
-            train_one_epoch(sess, ops, train_writer)
+            train_one_epoch(sess, ops, train_writer, train_config)
             eval_one_epoch(sess, ops, test_writer)
             
             # Save the variables to disk.
@@ -173,7 +173,7 @@ def train():
 
 
 
-def train_one_epoch(sess, ops, train_writer):
+def train_one_epoch(sess, ops, train_writer, train_config=(True, True, True)):
     global BATCH_CNT, EXCLUDE_TIME
     """ ops: dict mapping from string to tf ops """
     is_training = True
@@ -202,9 +202,18 @@ def train_one_epoch(sess, ops, train_writer):
             
             # Augment batched point clouds by rotation and jittering
             t = time()
-            rotated_data = provider.rotate_point_cloud(current_data[start_idx:end_idx, :, :])
-            mat_data = provider.get_MAT(rotated_data)
-            jittered_data = provider.jitter_point_cloud(mat_data)
+            if train_config[0] is True:
+                rotated_data = provider.rotate_point_cloud(current_data[start_idx:end_idx, :, :])
+            else:
+                rotated_data = current_data[start_idx:end_idx, :, :]
+            if train_config[1] is True:
+                mat_data = provider.get_MAT(rotated_data)
+            else:
+                mat_data = rotated_data
+            if train_config[2] is True:
+                jittered_data = provider.jitter_point_cloud(mat_data)
+            else:
+                jittered_data = mat_data
             EXCLUDE_TIME += time() - t
             feed_dict = {ops['pointclouds_pl']: jittered_data,
                          ops['labels_pl']: current_label[start_idx:end_idx],
@@ -264,5 +273,6 @@ def eval_one_epoch(sess, ops, test_writer):
          
 
 if __name__ == "__main__":
-    train()
+    train(train_config=(False, False, True))
+    train(train_config=(True, False, True))
     LOG_FOUT.close()
