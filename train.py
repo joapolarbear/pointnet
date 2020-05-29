@@ -7,6 +7,7 @@ import socket
 import importlib
 import os
 import sys
+from time import time
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'models'))
@@ -64,10 +65,14 @@ TRAIN_FILES = provider.getDataFiles( \
 TEST_FILES = provider.getDataFiles(\
     os.path.join(BASE_DIR, 'data/modelnet40_ply_hdf5_2048/test_files.txt'))
 
+BATCH_CNT = 0
+BASE_TIME = time()
+EXCLUDE_TIME = 0
 def log_string(out_str):
-    LOG_FOUT.write(out_str+'\n')
+    final_str = "%-10f: %s" % (time() - BASE_TIME - EXCLUDE_TIME, out_str)
+    LOG_FOUT.write(final_str+'\n')
     LOG_FOUT.flush()
-    print(out_str)
+    print(final_str)
 
 
 def get_learning_rate(batch):
@@ -169,6 +174,7 @@ def train():
 
 
 def train_one_epoch(sess, ops, train_writer):
+    global BATCH_CNT, EXCLUDE_TIME
     """ ops: dict mapping from string to tf ops """
     is_training = True
     
@@ -195,8 +201,11 @@ def train_one_epoch(sess, ops, train_writer):
             end_idx = (batch_idx+1) * BATCH_SIZE
             
             # Augment batched point clouds by rotation and jittering
+            t = time()
             rotated_data = provider.rotate_point_cloud(current_data[start_idx:end_idx, :, :])
-            jittered_data = provider.jitter_point_cloud(rotated_data)
+            mat_data = provider.get_MAT(rotated_data)
+            jittered_data = provider.jitter_point_cloud(mat_data)
+            EXCLUDE_TIME += time() - t
             feed_dict = {ops['pointclouds_pl']: jittered_data,
                          ops['labels_pl']: current_label[start_idx:end_idx],
                          ops['is_training_pl']: is_training,}
@@ -208,9 +217,9 @@ def train_one_epoch(sess, ops, train_writer):
             total_correct += correct
             total_seen += BATCH_SIZE
             loss_sum += loss_val
-        
-        log_string('mean loss: %f' % (loss_sum / float(num_batches)))
-        log_string('accuracy: %f' % (total_correct / float(total_seen)))
+        BATCH_CNT += num_batches
+        log_string('Batch %-5d, mean loss: %-10.2f, accuracy: %-10.2f' % 
+            (BATCH_CNT, loss_sum / float(num_batches), total_correct / float(total_seen)))
 
         
 def eval_one_epoch(sess, ops, test_writer):
@@ -249,12 +258,10 @@ def eval_one_epoch(sess, ops, test_writer):
                 l = current_label[i]
                 total_seen_class[l] += 1
                 total_correct_class[l] += (pred_val[i-start_idx] == l)
-            
-    log_string('eval mean loss: %f' % (loss_sum / float(total_seen)))
-    log_string('eval accuracy: %f'% (total_correct / float(total_seen)))
-    log_string('eval avg class acc: %f' % (np.mean(np.array(total_correct_class)/np.array(total_seen_class,dtype=np.float))))
+    global BATCH_CNT
+    log_string('Batch %-5d, eval mean loss: %-10.2f, eval accuracy: %-10.2f, eval avg class acc: %-10.2f' % 
+        (BATCH_CNT, loss_sum / float(total_seen), total_correct / float(total_seen), np.mean(np.array(total_correct_class)/np.array(total_seen_class,dtype=np.float))))
          
-
 
 if __name__ == "__main__":
     train()

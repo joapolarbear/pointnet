@@ -2,6 +2,11 @@ import os
 import sys
 import numpy as np
 import h5py
+from sklearn.decomposition import PCA
+from pykdtree.kdtree import KDTree
+from multiprocessing import Pool
+from time import time
+from masb import MASB
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
@@ -106,3 +111,36 @@ def load_h5_data_label_seg(h5_filename):
 
 def loadDataFile_with_seg(filename):
     return load_h5_data_label_seg(filename)
+
+
+### Calculate MAT
+def compute_normal(neighbours):
+    pca = PCA(n_components=3)
+    pca.fit(neighbours)
+    plane_normal = pca.components_[-1] # this is a normalized normal
+    # make all normals point upwards:
+    if plane_normal[-1] < 0:
+        plane_normal *= -1
+    return plane_normal
+
+def PCA_normal(input_array):
+    kd_tree = KDTree(input_array)
+    neighbours = kd_tree.query(input_array, 10+1)[1]
+    neighbours = input_array[neighbours]
+    
+    p = Pool()
+    normals = p.map(compute_normal, neighbours)
+    
+    datadict = {}
+    datadict['coords'] = input_array
+    datadict['normals'] = np.array(normals, dtype=np.float32)
+
+    return datadict
+
+def get_MAT(input_array):
+    datadict = PCA_normal(input_array)
+    # compute interior and exterior MAT
+    ma = MASB(datadict, 10)
+    ma.compute_balls()
+    return datadict["ma_coords_in"]
+
