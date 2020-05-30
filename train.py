@@ -20,7 +20,7 @@ parser.add_argument('--gpu', type=int, default=0, help='GPU to use [default: GPU
 parser.add_argument('--model', default='pointnet_cls', help='Model name: pointnet_cls or pointnet_cls_basic [default: pointnet_cls]')
 parser.add_argument('--log_dir', default='log', help='Log dir [default: log]')
 parser.add_argument('--num_point', type=int, default=1024, help='Point Number [256/512/1024/2048] [default: 1024]')
-parser.add_argument('--max_epoch', type=int, default=100, help='Epoch to run [default: 100]')
+parser.add_argument('--max_epoch', type=int, default=10, help='Epoch to run [default: 100]')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size during training [default: 32]')
 parser.add_argument('--learning_rate', type=float, default=0.001, help='Initial learning rate [default: 0.001]')
 parser.add_argument('--momentum', type=float, default=0.9, help='Initial learning rate [default: 0.9]')
@@ -96,6 +96,7 @@ def get_bn_decay(batch):
     return bn_decay
 
 def train(train_config):
+    log_string("Configuration: Rotation: %s, MAT: %s, Jitter: %s" % (train_config[0], train_config[1], train_config[2]))
     with tf.Graph().as_default():
         with tf.device('/gpu:'+str(GPU_INDEX)):
             pointclouds_pl, labels_pl = MODEL.placeholder_inputs(BATCH_SIZE, NUM_POINT)
@@ -164,7 +165,7 @@ def train(train_config):
             sys.stdout.flush()
              
             train_one_epoch(sess, ops, train_writer, train_config)
-            eval_one_epoch(sess, ops, test_writer)
+            eval_one_epoch(sess, ops, test_writer, train_config)
             
             # Save the variables to disk.
             if epoch % 10 == 0:
@@ -173,7 +174,7 @@ def train(train_config):
 
 
 
-def train_one_epoch(sess, ops, train_writer, train_config=(True, True, True)):
+def train_one_epoch(sess, ops, train_writer, train_config):
     global BATCH_CNT, EXCLUDE_TIME
     """ ops: dict mapping from string to tf ops """
     is_training = True
@@ -183,7 +184,6 @@ def train_one_epoch(sess, ops, train_writer, train_config=(True, True, True)):
     np.random.shuffle(train_file_idxs)
     
     for fn in range(len(TRAIN_FILES)):
-        log_string('----' + str(fn) + '-----')
         current_data, current_label = provider.loadDataFile(TRAIN_FILES[train_file_idxs[fn]])
         current_data = current_data[:,0:NUM_POINT,:]
         current_data, current_label, _ = provider.shuffle_data(current_data, np.squeeze(current_label))            
@@ -231,7 +231,7 @@ def train_one_epoch(sess, ops, train_writer, train_config=(True, True, True)):
             (BATCH_CNT, loss_sum / float(num_batches), total_correct / float(total_seen)))
 
         
-def eval_one_epoch(sess, ops, test_writer):
+def eval_one_epoch(sess, ops, test_writer, train_config):
     """ ops: dict mapping from string to tf ops """
     is_training = False
     total_correct = 0
@@ -241,7 +241,6 @@ def eval_one_epoch(sess, ops, test_writer):
     total_correct_class = [0 for _ in range(NUM_CLASSES)]
     
     for fn in range(len(TEST_FILES)):
-        log_string('----' + str(fn) + '-----')
         current_data, current_label = provider.loadDataFile(TEST_FILES[fn])
         current_data = current_data[:,0:NUM_POINT,:]
         current_label = np.squeeze(current_label)
@@ -253,7 +252,12 @@ def eval_one_epoch(sess, ops, test_writer):
             start_idx = batch_idx * BATCH_SIZE
             end_idx = (batch_idx+1) * BATCH_SIZE
 
-            feed_dict = {ops['pointclouds_pl']: current_data[start_idx:end_idx, :, :],
+            if train_config[1] is True:
+                mat_data = provider.get_MAT(current_data[start_idx:end_idx, :, :])
+            else:
+                mat_data = current_data[start_idx:end_idx, :, :]
+
+            feed_dict = {ops['pointclouds_pl']: mat_data,
                          ops['labels_pl']: current_label[start_idx:end_idx],
                          ops['is_training_pl']: is_training}
             summary, step, loss_val, pred_val = sess.run([ops['merged'], ops['step'],
@@ -273,6 +277,6 @@ def eval_one_epoch(sess, ops, test_writer):
          
 
 if __name__ == "__main__":
-    train(train_config=(False, False, True))
     train(train_config=(True, False, True))
+    train(train_config=(True, True, True))
     LOG_FOUT.close()
