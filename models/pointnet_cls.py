@@ -15,7 +15,7 @@ def placeholder_inputs(batch_size, num_point):
     return pointclouds_pl, labels_pl
 
 
-def get_model(point_cloud, is_training, bn_decay=None):
+def get_model(point_cloud, is_training, bn_decay=None, t_net=True):
     """ Classification PointNet, input is BxNx3, output Bx40 """
     batch_size = point_cloud.get_shape()[0].value
     num_point = point_cloud.get_shape()[1].value
@@ -23,7 +23,7 @@ def get_model(point_cloud, is_training, bn_decay=None):
 
     with tf.variable_scope('transform_net1') as sc:
         transform = input_transform_net(point_cloud, is_training, bn_decay, K=3)
-    point_cloud_transformed = tf.matmul(point_cloud, transform)
+    point_cloud_transformed = tf.matmul(point_cloud, transform) if t_net is True else point_cloud
     input_image = tf.expand_dims(point_cloud_transformed, -1)
 
     net = tf_util.conv2d(input_image, 64, [1,3],

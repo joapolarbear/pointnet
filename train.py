@@ -96,7 +96,9 @@ def get_bn_decay(batch):
     return bn_decay
 
 def train(train_config):
-    log_string("Configuration: Rotation: %s, MAT: %s, Jitter: %s" % (train_config[0], train_config[1], train_config[2]))
+    ### Train config =[Rotation, MAT, Jitter, Use T-net] 
+    log_string("Configuration: Rotation: %s, MAT: %s, Jitter: %s, Use T-net: %s" % 
+        (train_config[0], train_config[1], train_config[2], train_config[3]))
     with tf.Graph().as_default():
         with tf.device('/gpu:'+str(GPU_INDEX)):
             pointclouds_pl, labels_pl = MODEL.placeholder_inputs(BATCH_SIZE, NUM_POINT)
@@ -110,7 +112,7 @@ def train(train_config):
             tf.summary.scalar('bn_decay', bn_decay)
 
             # Get model and loss 
-            pred, end_points = MODEL.get_model(pointclouds_pl, is_training_pl, bn_decay=bn_decay)
+            pred, end_points = MODEL.get_model(pointclouds_pl, is_training_pl, bn_decay=bn_decay, t_net=train_config[3])
             loss = MODEL.get_loss(pred, labels_pl, end_points)
             tf.summary.scalar('loss', loss)
 
@@ -252,31 +254,36 @@ def eval_one_epoch(sess, ops, test_writer, train_config):
             start_idx = batch_idx * BATCH_SIZE
             end_idx = (batch_idx+1) * BATCH_SIZE
 
-            if train_config[1] is True:
-                mat_data = provider.get_MAT(current_data[start_idx:end_idx, :, :])
-            else:
-                mat_data = current_data[start_idx:end_idx, :, :]
-
-            feed_dict = {ops['pointclouds_pl']: mat_data,
-                         ops['labels_pl']: current_label[start_idx:end_idx],
-                         ops['is_training_pl']: is_training}
-            summary, step, loss_val, pred_val = sess.run([ops['merged'], ops['step'],
-                ops['loss'], ops['pred']], feed_dict=feed_dict)
-            pred_val = np.argmax(pred_val, 1)
-            correct = np.sum(pred_val == current_label[start_idx:end_idx])
-            total_correct += correct
-            total_seen += BATCH_SIZE
-            loss_sum += (loss_val*BATCH_SIZE)
-            for i in range(start_idx, end_idx):
-                l = current_label[i]
-                total_seen_class[l] += 1
-                total_correct_class[l] += (pred_val[i-start_idx] == l)
+            ### evaluation with different transformations applied to the data
+            for _ in range(5):
+                t = time()
+                rotated_data = provider.rotate_point_cloud(current_data[start_idx:end_idx, :, :])
+                if train_config[1] is True:
+                    mat_data = provider.get_MAT(rotated_data)
+                else:
+                    mat_data = rotated_data
+                jittered_data = mat_data
+                EXCLUDE_TIME += time() - t
+                feed_dict = {ops['pointclouds_pl']: jittered_data,
+                             ops['labels_pl']: current_label[start_idx:end_idx],
+                             ops['is_training_pl']: is_training}
+                summary, step, loss_val, pred_val = sess.run([ops['merged'], ops['step'],
+                    ops['loss'], ops['pred']], feed_dict=feed_dict)
+                pred_val = np.argmax(pred_val, 1)
+                correct = np.sum(pred_val == current_label[start_idx:end_idx])
+                total_correct += correct
+                total_seen += BATCH_SIZE
+                loss_sum += (loss_val*BATCH_SIZE)
+                for i in range(start_idx, end_idx):
+                    l = current_label[i]
+                    total_seen_class[l] += 1
+                    total_correct_class[l] += (pred_val[i-start_idx] == l)
     global BATCH_CNT
     log_string('Batch %-5d, eval mean loss: %-10.2f, eval accuracy: %-10.2f, eval avg class acc: %-10.2f' % 
         (BATCH_CNT, loss_sum / float(total_seen), total_correct / float(total_seen), np.mean(np.array(total_correct_class)/np.array(total_seen_class,dtype=np.float))))
          
 
 if __name__ == "__main__":
-    train(train_config=(True, False, True))
-    train(train_config=(True, True, True))
+    # train(train_config=(True, False, True))
+    train(train_config=(True, True, True, True))
     LOG_FOUT.close()
