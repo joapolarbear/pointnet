@@ -234,6 +234,7 @@ def train_one_epoch(sess, ops, train_writer, train_config):
 
         
 def eval_one_epoch(sess, ops, test_writer, train_config):
+    global BATCH_CNT, EXCLUDE_TIME
     """ ops: dict mapping from string to tf ops """
     is_training = False
     total_correct = 0
@@ -278,12 +279,11 @@ def eval_one_epoch(sess, ops, test_writer, train_config):
                     l = current_label[i]
                     total_seen_class[l] += 1
                     total_correct_class[l] += (pred_val[i-start_idx] == l)
-    global BATCH_CNT
     log_string('Batch %-5d, eval mean loss: %-10.2f, eval accuracy: %-10.2f, eval avg class acc: %-10.2f' % 
         (BATCH_CNT, loss_sum / float(total_seen), total_correct / float(total_seen), np.mean(np.array(total_correct_class)/np.array(total_seen_class,dtype=np.float))))
          
 
 if __name__ == "__main__":
     # train(train_config=(True, False, True))
-    train(train_config=(True, True, True, True))
+    train(train_config=(True, False, True, True))
     LOG_FOUT.close()
